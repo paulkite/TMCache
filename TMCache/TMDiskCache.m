@@ -421,6 +421,40 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
     });
 }
 
+- (void)cachedDataForKey:(NSString *)key block:(TMDiskCacheObjectBlock)block
+{
+	NSDate *now = [NSDate date];
+	
+	if (!key || !block)
+	{
+		return;
+	}
+	
+	__weak TMDiskCache *weakSelf = self;
+	
+	dispatch_async(_queue, ^{
+		TMDiskCache *strongSelf = weakSelf;
+		
+		NSURL *fileURL = [strongSelf encodedFileURLForKey:key];
+		NSData *data = nil;
+		
+		if ([[NSFileManager defaultManager] fileExistsAtPath:[fileURL path]])
+		{
+			@try
+			{
+				data = [NSData dataWithContentsOfFile:[fileURL path]];
+				[strongSelf setFileModificationDate:now forURL:fileURL];
+			}
+			@catch (NSException *exception)
+			{
+				NSLog(@"TMDiskCache exception: %@", exception.reason);
+			}
+		}
+		
+		block(strongSelf, key, data, fileURL);
+	});
+}
+
 - (void)fileURLForKey:(NSString *)key block:(TMDiskCacheObjectBlock)block
 {
     NSDate *now = [[NSDate alloc] init];
@@ -499,6 +533,82 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
 
         TMCacheEndBackgroundTask();
     });
+}
+
+- (void)cacheData:(NSData *)data forKey:(NSString *)key block:(TMDiskCacheObjectBlock)block
+{
+	NSDate *now = [NSDate date];
+	
+	if (!data || !key)
+	{
+		return;
+	}
+	
+	TMCacheStartBackgroundTask();
+	
+	__weak TMDiskCache *weakSelf = self;
+	
+	dispatch_async(_queue, ^{
+		TMDiskCache *strongSelf = weakSelf;
+		
+		if (!strongSelf)
+		{
+			TMCacheEndBackgroundTask();
+			return;
+		}
+		
+		NSURL *fileURL = [strongSelf encodedFileURLForKey:key];
+		
+		if (strongSelf->_willAddObjectBlock)
+		{
+			strongSelf->_willAddObjectBlock(strongSelf, key, data, fileURL);
+		}
+		
+		NSError *error = nil;
+		
+		NSDictionary *fileAttributes = @{NSFileProtectionKey : NSFileProtectionNone};
+		NSFileManager *fileManager = [[NSFileManager alloc] init];
+		BOOL written = [fileManager createFileAtPath:[fileURL path] contents:data attributes:fileAttributes];
+		TMDiskCacheError(error);
+		
+		if (written)
+		{
+			[strongSelf setFileModificationDate:now forURL:fileURL];
+			
+			error = nil;
+			NSDictionary *values = [fileURL resourceValuesForKeys:@[NSURLTotalFileAllocatedSizeKey] error:&error];
+			TMDiskCacheError(error);
+			
+			NSNumber *diskFileSize = [values objectForKey:NSURLTotalFileAllocatedSizeKey];
+			
+			if (diskFileSize)
+			{
+				[strongSelf->_sizes setObject:diskFileSize forKey:key];
+				strongSelf.byteCount = (strongSelf->_byteCount + [diskFileSize unsignedIntegerValue]);
+			}
+			
+			if (strongSelf->_byteLimit > 0 && strongSelf->_byteCount > strongSelf->_byteLimit)
+			{
+				[strongSelf trimToSizeByDate:strongSelf->_byteLimit block:nil];
+			}
+		}
+		else
+		{
+			fileURL = nil;
+		}
+		
+		if (strongSelf->_didAddObjectBlock)
+		{
+			strongSelf->_didAddObjectBlock(strongSelf, key, data, written ? fileURL : nil);
+		}
+		
+		if (block)
+		{
+			block(strongSelf, key, data, fileURL);
+		}
+		
+		TMCacheEndBackgroundTask();
+	});
 }
 
 - (void)removeObjectForKey:(NSString *)key block:(TMDiskCacheObjectBlock)block
@@ -701,6 +811,31 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
     return objectForKey;
 }
 
+- (NSData *)cachedDataForKey:(NSString *)key
+{
+	if (!key)
+	{
+		return nil;
+	}
+	
+	__block NSData *dataForKey = nil;
+	
+	dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+	
+	[self cachedDataForKey:key block:^(TMDiskCache *cache, NSString *key, id<NSCoding> object, NSURL *fileURL) {
+		dataForKey = (NSData *)object;
+		dispatch_semaphore_signal(semaphore);
+	}];
+	
+	dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+	
+#if !OS_OBJECT_USE_OBJC
+	dispatch_release(semaphore);
+#endif
+	
+	return dataForKey;
+}
+
 - (NSURL *)fileURLForKey:(NSString *)key
 {
     if (!key)
@@ -740,6 +875,26 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
     #if !OS_OBJECT_USE_OBJC
     dispatch_release(semaphore);
     #endif
+}
+
+- (void)cacheData:(NSData *)data forKey:(NSString *)key
+{
+	if (!data || !key)
+	{
+		return;
+	}
+	
+	dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+	
+	[self cacheData:data forKey:key block:^(TMDiskCache *cache, NSString *key, id<NSCoding> object, NSURL *fileURL) {
+		dispatch_semaphore_signal(semaphore);
+	}];
+	
+	dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+	
+#if !OS_OBJECT_USE_OBJC
+	dispatch_release(semaphore);
+#endif
 }
 
 - (void)removeObjectForKey:(NSString *)key

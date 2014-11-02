@@ -174,6 +174,7 @@ typedef void (^TMDiskCacheObjectBlock)(TMDiskCache *cache, NSString *key, id <NS
  @param block A block to be executed serially when the object is available.
  */
 - (void)objectForKey:(NSString *)key block:(TMDiskCacheObjectBlock)block;
+- (void)cachedDataForKey:(NSString *)key block:(TMDiskCacheObjectBlock)block;
 
 /**
  Retrieves the fileURL for the specified key without actually reading the data from disk. This method
@@ -197,6 +198,7 @@ typedef void (^TMDiskCacheObjectBlock)(TMDiskCache *cache, NSString *key, id <NS
  @param block A block to be executed serially after the object has been stored, or nil.
  */
 - (void)setObject:(id <NSCoding>)object forKey:(NSString *)key block:(TMDiskCacheObjectBlock)block;
+- (void)cacheData:(NSData *)data forKey:(NSString *)key block:(TMDiskCacheObjectBlock)block;
 
 /**
  Removes the object for the specified key. This method returns immediately and executes the passed block
@@ -265,6 +267,7 @@ typedef void (^TMDiskCacheObjectBlock)(TMDiskCache *cache, NSString *key, id <NS
  @result The object for the specified key.
  */
 - (id <NSCoding>)objectForKey:(NSString *)key;
+- (NSData *)cachedDataForKey:(NSString *)key;
 
 /**
  Retrieves the file URL for the specified key. This method blocks the calling thread until the
@@ -286,6 +289,7 @@ typedef void (^TMDiskCacheObjectBlock)(TMDiskCache *cache, NSString *key, id <NS
  @param key A key to associate with the object. This string will be copied.
  */
 - (void)setObject:(id <NSCoding>)object forKey:(NSString *)key;
+- (void)cacheData:(NSData *)data forKey:(NSString *)key;
 
 /**
  Removes the object for the specified key. This method blocks the calling thread until the object
