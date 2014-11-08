@@ -566,7 +566,7 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
 		
 		NSError *error = nil;
 		
-		NSDictionary *fileAttributes = @{NSFileProtectionKey : NSFileProtectionNone};
+		NSDictionary *fileAttributes = @{NSFileProtectionKey : NSFileProtectionCompleteUntilFirstUserAuthentication};
 		NSFileManager *fileManager = [[NSFileManager alloc] init];
 		BOOL written = [fileManager createFileAtPath:[fileURL path] contents:data attributes:fileAttributes];
 		TMDiskCacheError(error);
