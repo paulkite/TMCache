@@ -553,7 +553,7 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
 		return;
 	}
 	
-	TMCacheStartBackgroundTask();
+    UIBackgroundTaskIdentifier taskID = [TMCacheBackgroundTaskManager beginBackgroundTask];
 	
 	__weak TMDiskCache *weakSelf = self;
 	
@@ -562,7 +562,7 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
 		
 		if (!strongSelf)
 		{
-			TMCacheEndBackgroundTask();
+			[TMCacheBackgroundTaskManager endBackgroundTask:taskID];
 			return;
 		}
 		
@@ -592,8 +592,12 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
 			
 			if (diskFileSize)
 			{
-				[strongSelf->_sizes setObject:diskFileSize forKey:key];
-				strongSelf.byteCount = (strongSelf->_byteCount + [diskFileSize unsignedIntegerValue]);
+                NSNumber *oldEntry = [strongSelf->_sizes objectForKey:key];
+                
+                if ([oldEntry isKindOfClass:[NSNumber class]])
+                {
+                    strongSelf.byteCount = (strongSelf->_byteCount - [oldEntry unsignedIntegerValue]);
+                }
 			}
 			
 			if (strongSelf->_byteLimit > 0 && strongSelf->_byteCount > strongSelf->_byteLimit)
@@ -616,7 +620,7 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
 			block(strongSelf, key, data, fileURL);
 		}
 		
-		TMCacheEndBackgroundTask();
+		[TMCacheBackgroundTaskManager endBackgroundTask:taskID];
 	});
 }
 
